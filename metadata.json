@@ -1,0 +1,8 @@
+{
+  "name": "COLLEVENTO",
+  "description": "Premium Next-Gen College Event Management Platform with real-time analytics, AI assistant, and secure QR ticketing.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

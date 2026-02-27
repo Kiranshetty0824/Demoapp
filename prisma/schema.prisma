@@ -1,0 +1,170 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(uuid())
+  phone         String?   @unique
+  email         String?   @unique
+  fullName      String?
+  collegeName   String?
+  role          String    @default("GUEST") // STUDENT, ORGANIZER, ADMIN, GUEST
+  isVerified    Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Role specific relations
+  student       Student?
+  organizer     Organizer?
+  admin         Admin?
+
+  // Shared
+  chatMessages  ChatMessage[]
+  notifications NotificationLog[]
+}
+
+model Admin {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id])
+  collegeName String
+  tasks       Task[]   @relation("AdminTasks")
+}
+
+model Organizer {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id])
+  collegeName   String
+  adminId       String?
+  isApproved    Boolean  @default(false)
+  events        Event[]
+  tasks         Task[]   @relation("OrganizerTasks")
+}
+
+model Student {
+  id          String    @id @default(uuid())
+  userId      String    @unique
+  user        User      @relation(fields: [userId], references: [id])
+  collegeName String
+  bookings    Booking[]
+  attendance  Attendance[]
+}
+
+model Event {
+  id                String    @id @default(uuid())
+  title             String
+  description       String
+  date              DateTime
+  venue             String
+  category          String
+  capacity          Int
+  price             Float
+  bannerUrl         String?
+  paymentQrUrl      String?
+  certTemplateUrl   String?
+  status            String    @default("PENDING") // PENDING, APPROVED, REJECTED, COMPLETED
+  organizerId       String
+  organizer         Organizer @relation(fields: [organizerId], references: [id])
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  bookings          Booking[]
+  attendance        Attendance[]
+}
+
+model Booking {
+  id            String   @id @default(uuid())
+  studentId     String
+  student       Student  @relation(fields: [studentId], references: [id])
+  eventId       String
+  event         Event    @relation(fields: [eventId], references: [id])
+  status        String   @default("PENDING") // PENDING, PAID, CANCELLED
+  paymentProof  String?  // URL to screenshot
+  createdAt     DateTime @default(now())
+  
+  payment       Payment?
+  ticket        Ticket?
+}
+
+model Ticket {
+  id        String   @id @default(uuid())
+  bookingId String   @unique
+  booking   Booking  @relation(fields: [bookingId], references: [id])
+  qrCode    String   // HMAC signed payload
+  isScanned Boolean  @default(false)
+  scannedAt DateTime?
+}
+
+model Payment {
+  id              String   @id @default(uuid())
+  bookingId       String   @unique
+  booking         Booking  @relation(fields: [bookingId], references: [id])
+  razorpayOrderId String?
+  razorpayPaymentId String?
+  amount          Float
+  status          String   @default("PENDING")
+  createdAt       DateTime @default(now())
+}
+
+model Attendance {
+  id        String   @id @default(uuid())
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id])
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id])
+  markedAt  DateTime @default(now())
+}
+
+model OrganizerCode {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  collegeName String
+  isUsed      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model Task {
+  id          String    @id @default(uuid())
+  title       String
+  description String
+  deadline    DateTime
+  status      String    @default("PENDING") // PENDING, COMPLETED
+  adminId     String
+  admin       Admin     @relation("AdminTasks", fields: [adminId], references: [id])
+  organizerId String
+  organizer   Organizer @relation("OrganizerTasks", fields: [organizerId], references: [id])
+  createdAt   DateTime  @default(now())
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  message   String
+  role      String   // user, assistant
+  createdAt DateTime @default(now())
+}
+
+model NotificationLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  title     String
+  body      String
+  type      String   // SMS, EMAIL, PUSH
+  createdAt DateTime @default(now())
+}
+
+model OTPLog {
+  id        String   @id @default(uuid())
+  phone     String
+  otp       String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
