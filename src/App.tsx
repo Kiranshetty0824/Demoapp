@@ -200,14 +200,37 @@ const HomePage = ({ role, onEventClick }: { role: Role, onEventClick: (e: Event)
 const EventDetails = ({ event, onBack }: { event: Event, onBack: () => void }) => {
   const [isBooking, setIsBooking] = useState(false);
 
-  const handleBooking = () => {
+  const handleBooking = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert('Please login to book tickets');
+      return;
+    }
+
     setIsBooking(true);
-    // Simulate Razorpay
-    setTimeout(() => {
-      alert('Payment Successful! Ticket generated.');
+    try {
+      const res = await fetch('/api/bookings', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ eventId: event.id })
+      });
+
+      if (res.ok) {
+        alert('Booking Successful! Ticket generated.');
+        onBack();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Booking failed');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Network error');
+    } finally {
       setIsBooking(false);
-      onBack();
-    }, 2000);
+    }
   };
 
   return (
@@ -313,6 +336,25 @@ const EventDetails = ({ event, onBack }: { event: Event, onBack: () => void }) =
 };
 
 const OrganizerDashboard = ({ onCreateEvent }: { onCreateEvent: () => void }) => {
+  const [stats, setStats] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    fetch('/api/organizer/stats', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        setStats(data);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error(err);
+        setLoading(false);
+      });
+  }, []);
+
   return (
     <div className="p-6 pb-32 space-y-8">
       <header>
@@ -320,18 +362,25 @@ const OrganizerDashboard = ({ onCreateEvent }: { onCreateEvent: () => void }) =>
         <p className="text-[#B0B0C3]">Real-time event performance.</p>
       </header>
 
-      <div className="grid grid-cols-2 gap-4">
-        <GlassCard className="p-4 bg-gradient-to-br from-[#6C63FF]/20 to-transparent">
-          <Users className="text-[#6C63FF] mb-2" />
-          <div className="text-2xl font-bold text-white">1,240</div>
-          <div className="text-xs text-[#B0B0C3]">Total Registrations</div>
-        </GlassCard>
-        <GlassCard className="p-4 bg-gradient-to-br from-[#FFD369]/20 to-transparent">
-          <CreditCard className="text-[#FFD369] mb-2" />
-          <div className="text-2xl font-bold text-white">₹1.2L</div>
-          <div className="text-xs text-[#B0B0C3]">Total Revenue</div>
-        </GlassCard>
-      </div>
+      {loading ? (
+        <div className="grid grid-cols-2 gap-4">
+          <div className="h-24 bg-white/5 animate-pulse rounded-2xl" />
+          <div className="h-24 bg-white/5 animate-pulse rounded-2xl" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-4">
+          <GlassCard className="p-4 bg-gradient-to-br from-[#6C63FF]/20 to-transparent">
+            <Users className="text-[#6C63FF] mb-2" />
+            <div className="text-2xl font-bold text-white">{stats?.totalRegistrations || 0}</div>
+            <div className="text-xs text-[#B0B0C3]">Total Registrations</div>
+          </GlassCard>
+          <GlassCard className="p-4 bg-gradient-to-br from-[#FFD369]/20 to-transparent">
+            <CreditCard className="text-[#FFD369] mb-2" />
+            <div className="text-2xl font-bold text-white">₹{stats?.totalRevenue || 0}</div>
+            <div className="text-xs text-[#B0B0C3]">Total Revenue</div>
+          </GlassCard>
+        </div>
+      )}
 
       <GlassCard className="p-6">
         <div className="flex justify-between items-center mb-6">
@@ -389,10 +438,29 @@ const CreateEventModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () =>
     }, 1500);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    alert('Event submitted for admin approval!');
-    onClose();
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch('/api/events', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(formData)
+      });
+      if (res.ok) {
+        alert('Event submitted for admin approval!');
+        onClose();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to create event');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Network error');
+    }
   };
 
   return (
@@ -519,26 +587,49 @@ const CreateEventModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () =>
   );
 };
 
-const ProfilePage = ({ role }: { role: Role }) => {
+const ProfilePage = ({ role, user }: { role: Role, user: any }) => {
   const [profileData, setProfileData] = useState<any>(null);
   const [loading, setLoading] = useState(role === 'ORGANIZER');
 
   useEffect(() => {
     if (role === 'ORGANIZER') {
-      // In a real app, fetch from /api/organizer/profile
-      // Mocking for now to show the UI requested
-      setTimeout(() => {
-        setProfileData({
-          admin: { user: { fullName: 'Dr. Sharma' } },
-          tasks: [
-            { id: '1', title: 'Verify TechX Sponsors', status: 'PENDING', deadline: '2024-10-10' },
-            { id: '2', title: 'Arrange OAT Sound System', status: 'COMPLETED', deadline: '2024-10-12' }
-          ]
+      const token = localStorage.getItem('token');
+      fetch('/api/organizer/profile', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+        .then(res => res.json())
+        .then(data => {
+          setProfileData(data);
+          setLoading(false);
+        })
+        .catch(err => {
+          console.error(err);
+          setLoading(false);
         });
-        setLoading(false);
-      }, 1000);
     }
   }, [role]);
+
+  const handleTaskStatus = async (taskId: string, status: string) => {
+    const token = localStorage.getItem('token');
+    try {
+      await fetch(`/api/organizer/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ status })
+      });
+      // Refresh data
+      const res = await fetch('/api/organizer/profile', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      setProfileData(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   return (
     <div className="p-6 pb-32 space-y-8">
@@ -553,8 +644,8 @@ const ProfilePage = ({ role }: { role: Role }) => {
             <Plus size={16} />
           </button>
         </div>
-        <h2 className="text-2xl font-bold text-white mt-4">John Doe</h2>
-        <p className="text-[#B0B0C3]">IIT Bombay • {role}</p>
+        <h2 className="text-2xl font-bold text-white mt-4">{user.fullName}</h2>
+        <p className="text-[#B0B0C3]">{user.collegeName} • {role}</p>
         
         {role === 'ORGANIZER' && profileData?.admin && (
           <div className="mt-2 inline-flex items-center px-3 py-1 bg-white/5 rounded-full text-xs text-[#B0B0C3]">
@@ -574,16 +665,19 @@ const ProfilePage = ({ role }: { role: Role }) => {
             <div className="h-20 bg-white/5 animate-pulse rounded-2xl" />
           ) : (
             <div className="space-y-3">
-              {profileData?.tasks.map((task: any) => (
+              {profileData?.organizer.tasks.map((task: any) => (
                 <GlassCard key={task.id} className="flex items-center justify-between p-4">
                   <div>
                     <div className={cn("text-sm font-medium", task.status === 'COMPLETED' ? "text-[#B0B0C3] line-through" : "text-white")}>
                       {task.title}
                     </div>
-                    <div className="text-[10px] text-[#B0B0C3] mt-1">Deadline: {task.deadline}</div>
+                    <div className="text-[10px] text-[#B0B0C3] mt-1">Deadline: {new Date(task.deadline).toLocaleDateString()}</div>
                   </div>
                   {task.status === 'PENDING' ? (
-                    <button className="text-[10px] font-bold text-[#8B5CF6] uppercase tracking-wider px-3 py-1 bg-[#8B5CF6]/10 rounded-full">
+                    <button 
+                      onClick={() => handleTaskStatus(task.id, 'COMPLETED')}
+                      className="text-[10px] font-bold text-[#8B5CF6] uppercase tracking-wider px-3 py-1 bg-[#8B5CF6]/10 rounded-full"
+                    >
                       Mark Done
                     </button>
                   ) : (
@@ -636,7 +730,7 @@ const ProfilePage = ({ role }: { role: Role }) => {
   );
 };
 
-const AIChat = ({ isOpen, onClose, socket }: { isOpen: boolean, onClose: () => void, socket: Socket | null }) => {
+const AIChat = ({ isOpen, onClose, socket, user }: { isOpen: boolean, onClose: () => void, socket: Socket | null, user: any }) => {
   const [messages, setMessages] = useState([
     { role: 'assistant', text: 'Hi! I am COLLEVENTO AI. How can I help you today?' }
   ]);
@@ -655,14 +749,14 @@ const AIChat = ({ isOpen, onClose, socket }: { isOpen: boolean, onClose: () => v
   }, [socket]);
 
   const handleSend = () => {
-    if (!input.trim() || !socket) return;
+    if (!input.trim() || !socket || !user) return;
     
     const userMessage = input;
     setMessages(prev => [...prev, { role: 'user', text: userMessage }]);
     setInput('');
 
     socket.emit('chat:message', { 
-      userId: 'guest-user', // In a real app, use the actual user ID
+      userId: user.id,
       message: userMessage 
     });
   };
@@ -734,19 +828,37 @@ const AIChat = ({ isOpen, onClose, socket }: { isOpen: boolean, onClose: () => v
 
 export default function App() {
   const [socket, setSocket] = useState<Socket | null>(null);
+  const [user, setUser] = useState<any>(null);
+  const [token, setToken] = useState<string | null>(null);
 
   useEffect(() => {
     const newSocket = io();
     setSocket(newSocket);
     return () => { newSocket.close(); };
   }, []);
-  const [role, setRole] = useState<Role | null>(null);
+
+  const handleLogin = async (role: Role) => {
+    try {
+      const res = await fetch('/api/auth/guest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role })
+      });
+      const data = await res.json();
+      setUser(data.user);
+      setToken(data.token);
+      localStorage.setItem('token', data.token);
+    } catch (err) {
+      console.error('Login failed:', err);
+    }
+  };
+
   const [activeTab, setActiveTab] = useState('home');
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
   const [isCreateEventOpen, setIsCreateEventOpen] = useState(false);
 
-  if (!role) {
+  if (!user) {
     return (
       <div className="min-h-screen bg-[#0F0F1B] flex flex-col items-center justify-center p-8 text-center">
         <motion.div 
@@ -763,19 +875,19 @@ export default function App() {
 
         <div className="w-full max-w-xs space-y-4">
           <button 
-            onClick={() => setRole('STUDENT')}
+            onClick={() => handleLogin('STUDENT')}
             className="w-full py-4 bg-gradient-to-r from-[#6C63FF] to-[#8B5CF6] text-white font-bold rounded-2xl shadow-lg"
           >
             Continue as Student
           </button>
           <button 
-            onClick={() => setRole('ORGANIZER')}
+            onClick={() => handleLogin('ORGANIZER')}
             className="w-full py-4 bg-[#1E1E2F] text-white font-bold rounded-2xl border border-white/10"
           >
             Organizer Login
           </button>
           <button 
-            onClick={() => setRole('GUEST')}
+            onClick={() => handleLogin('GUEST')}
             className="text-[#B0B0C3] text-sm font-medium hover:text-white transition-colors"
           >
             Explore as Guest
@@ -785,12 +897,14 @@ export default function App() {
     );
   }
 
+  const role = user.role as Role;
+
   return (
     <div className="min-h-screen bg-[#0F0F1B] text-white font-sans selection:bg-[#6C63FF]/30">
       <main className="max-w-md mx-auto min-h-screen relative">
         {activeTab === 'home' && <HomePage role={role} onEventClick={setSelectedEvent} />}
         {activeTab === 'dashboard' && <OrganizerDashboard onCreateEvent={() => setIsCreateEventOpen(true)} />}
-        {activeTab === 'profile' && <ProfilePage role={role} />}
+        {activeTab === 'profile' && <ProfilePage role={role} user={user} />}
         
         {/* Placeholder for other tabs */}
         {['explore', 'tickets', 'events', 'scan', 'overview', 'approvals', 'broadcast'].includes(activeTab) && (
@@ -818,7 +932,7 @@ export default function App() {
           <MessageSquare className="text-white" />
         </button>
 
-        <AIChat isOpen={isAIChatOpen} onClose={() => setIsAIChatOpen(false)} socket={socket} />
+        <AIChat isOpen={isAIChatOpen} onClose={() => setIsAIChatOpen(false)} socket={socket} user={user} />
       </main>
     </div>
   );

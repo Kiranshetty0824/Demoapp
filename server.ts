@@ -182,9 +182,26 @@ app.get('/api/tickets/:id/pdf', async (req, res) => {
 
 // Auth
 app.post('/api/auth/guest', async (req, res) => {
+  const { role = 'GUEST' } = req.body;
   const user = await prisma.user.create({
-    data: { role: 'GUEST' }
+    data: { 
+      role,
+      fullName: `Guest ${role.toLowerCase()}`,
+      collegeName: 'IIT Bombay'
+    }
   });
+
+  // If student or organizer, create the role-specific record
+  if (role === 'STUDENT') {
+    await prisma.student.create({
+      data: { userId: user.id, collegeName: 'IIT Bombay' }
+    });
+  } else if (role === 'ORGANIZER') {
+    await prisma.organizer.create({
+      data: { userId: user.id, collegeName: 'IIT Bombay', isApproved: true }
+    });
+  }
+
   const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET);
   res.json({ token, user });
 });
@@ -214,7 +231,13 @@ app.post('/api/auth/otp/verify', async (req, res) => {
 
   let user = await prisma.user.findUnique({ where: { phone } });
   if (!user) {
-    user = await prisma.user.create({ data: { phone, role: 'STUDENT' } });
+    user = await prisma.user.create({ 
+      data: { 
+        phone, 
+        role: 'STUDENT',
+        student: { create: { collegeName: 'IIT Bombay' } }
+      } 
+    });
   }
 
   const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET);
