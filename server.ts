@@ -9,6 +9,7 @@ import path from 'path';
 import { PrismaClient } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 import { GoogleGenAI } from '@google/genai';
+import PDFDocument from 'pdfkit';
 
 // --- CONFIG ---
 const prisma = new PrismaClient();
@@ -155,7 +156,6 @@ app.post('/api/organizer/scan', authenticateToken, async (req: any, res) => {
 });
 
 // PDF Generation (Ticket)
-import PDFDocument from 'pdfkit';
 app.get('/api/tickets/:id/pdf', async (req, res) => {
   const ticket = await prisma.ticket.findUnique({
     where: { id: req.params.id },
@@ -225,7 +225,10 @@ app.post('/api/auth/otp/verify', async (req, res) => {
 app.get('/api/events', async (req, res) => {
   const events = await prisma.event.findMany({
     where: { status: 'APPROVED' },
-    include: { organizer: { include: { user: true } } }
+    include: { 
+      organizer: { include: { user: true } },
+      _count: { select: { bookings: true } }
+    }
   });
   res.json(events);
 });

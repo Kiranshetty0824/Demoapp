@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { io, Socket } from 'socket.io-client';
 import { 
   Home, Search, Ticket, User, Plus, Bell, 
   Calendar, MapPin, Users, CreditCard, 
@@ -27,7 +28,11 @@ interface Event {
   category: string;
   price: number;
   bannerUrl: string;
-  organizer: string;
+  organizer: {
+    user: {
+      fullName: string;
+    }
+  };
   capacity: number;
   _count?: {
     bookings: number;
@@ -282,11 +287,11 @@ const EventDetails = ({ event, onBack }: { event: Event, onBack: () => void }) =
           <div className="mt-6 flex items-center justify-between p-4 bg-white/5 rounded-xl">
             <div className="flex items-center space-x-3">
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#6C63FF] to-[#8B5CF6] flex items-center justify-center text-white font-bold">
-                {event.organizer[0]}
+                {event.organizer.user.fullName?.[0] || 'O'}
               </div>
               <div>
                 <div className="text-xs text-[#B0B0C3]">Organizer</div>
-                <div className="text-sm font-medium text-white">{event.organizer}</div>
+                <div className="text-sm font-medium text-white">{event.organizer.user.fullName || 'Organizer'}</div>
               </div>
             </div>
             <button className="text-[#8B5CF6] text-sm font-medium">Contact</button>
@@ -631,20 +636,35 @@ const ProfilePage = ({ role }: { role: Role }) => {
   );
 };
 
-const AIChat = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) => {
+const AIChat = ({ isOpen, onClose, socket }: { isOpen: boolean, onClose: () => void, socket: Socket | null }) => {
   const [messages, setMessages] = useState([
     { role: 'assistant', text: 'Hi! I am COLLEVENTO AI. How can I help you today?' }
   ]);
   const [input, setInput] = useState('');
 
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.on('chat:response', (data: { message: string }) => {
+      setMessages(prev => [...prev, { role: 'assistant', text: data.message }]);
+    });
+
+    return () => {
+      socket.off('chat:response');
+    };
+  }, [socket]);
+
   const handleSend = () => {
-    if (!input.trim()) return;
-    setMessages([...messages, { role: 'user', text: input }]);
+    if (!input.trim() || !socket) return;
+    
+    const userMessage = input;
+    setMessages(prev => [...prev, { role: 'user', text: userMessage }]);
     setInput('');
-    // Mock AI response
-    setTimeout(() => {
-      setMessages(prev => [...prev, { role: 'assistant', text: "I'm processing your request. As a premium assistant, I can help you with event details, bookings, and more!" }]);
-    }, 1000);
+
+    socket.emit('chat:message', { 
+      userId: 'guest-user', // In a real app, use the actual user ID
+      message: userMessage 
+    });
   };
 
   return (
@@ -713,6 +733,13 @@ const AIChat = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) =
 // --- MAIN APP ---
 
 export default function App() {
+  const [socket, setSocket] = useState<Socket | null>(null);
+
+  useEffect(() => {
+    const newSocket = io();
+    setSocket(newSocket);
+    return () => { newSocket.close(); };
+  }, []);
   const [role, setRole] = useState<Role | null>(null);
   const [activeTab, setActiveTab] = useState('home');
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
@@ -791,7 +818,7 @@ export default function App() {
           <MessageSquare className="text-white" />
         </button>
 
-        <AIChat isOpen={isAIChatOpen} onClose={() => setIsAIChatOpen(false)} />
+        <AIChat isOpen={isAIChatOpen} onClose={() => setIsAIChatOpen(false)} socket={socket} />
       </main>
     </div>
   );
